@@ -272,6 +272,172 @@ app.post("/patient-response", async (req, res) => {
   }
 });
 
+app.get("/diagnosis-report", async (req, res) => {
+  const { sessionId } = req.query;
+
+  console.log("QUERRY", sessionId);
+  if (!sessionId) {
+    return res.status(400).send({ error: "Missing sessionId query parameter" });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("sessions")
+      .select("*")
+      .eq("id", sessionId);
+
+    if (error) {
+      console.error("Error fetching session:", error.message);
+      return res.status(500).send({ error: "Error fetching session" });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).send({ error: "Session not found" });
+    }
+
+    const session = data[0];
+
+    // const completion = openai.chat.completions.create({
+    //   messages: [
+    //     {
+    //       role: "system",
+    //       content:
+    //         "you are a expert diagnostic AI assistant, you help new parents understand illnesses with their babies and diagnose issues",
+    //     },
+    //     {
+    //       role: "user",
+    //       content: `The patient is currently experiencing these symptoms in their words;
+    //        "${
+    //          session.symptoms
+    //        }". The patient was asked the following questions. Here are the questions and their answers: "${session?.answers
+    //         ?.map((a) => a.question + ": " + a.answer)
+    //         .join(", ")}". Help Generate a final diagnosis report`,
+    //     },
+    //   ],
+
+    //   model: "gpt-4",
+    //   functions: [
+    //     {
+    //       name: "generate_final_diagnosis_report",
+    //       description: `Generate final diagnosis report, based on the patient symptoms, and their replies to the diagnosis questions asked`,
+    //       parameters: {
+    //         type: "object",
+    //         properties: {
+    //           symptoms: {
+    //             type: "string",
+    //             description: "The symptoms the patient was experiencing",
+    //           },
+    //           diagnosis: {
+    //             type: "string",
+    //             description:
+    //               "Final diagnosis based on the patient symptoms, and their answers to the diagnosis questions",
+    //           },
+    //           possibleCause: {
+    //             type: "string",
+    //             description: "Possible cause of the final diagnosis",
+    //           },
+    //           treatmentPlan: {
+    //             type: "string",
+    //             description:
+    //               "The recommended treatment plan. This could include medications, therapy recommendations, lifestyle changes, etc.",
+    //           },
+    //           followUpRecommendation: {
+    //             type: "string",
+    //             description:
+    //               "This section includes recommendations for follow-up appointments, further tests, or monitoring",
+    //           },
+    //         },
+    //         required: [],
+    //       },
+    //     },
+    //   ],
+    //   function_call: "auto",
+    // });
+    const completion = await openai.chat.completions.create({
+      messages: [
+        {
+          role: "system",
+          content:
+            "you are a expert diagnostic AI assistant, you help new parents understand illnesses with their babies and diagnose issues",
+        },
+        {
+          role: "user",
+          content: `The patient is currently experiencing these symptoms in their words;
+            "${
+              session.symptoms
+            }". The patient was asked the following questions. Here are the questions and their answers: "${session.answers
+            .map((a) => a.question + ": " + a.answer)
+            .join(", ")}". Help Generate a final diagnosis report
+               `,
+        },
+      ],
+      model: "gpt-4",
+      functions: [
+        {
+          name: "generate_final_diagnosis_report",
+          description: `Generate final diagnosis report, based on the patient symptoms, and their replies to the diagnosis questions asked`,
+          parameters: {
+            type: "object",
+            properties: {
+              symptoms: {
+                type: "string",
+                description: "The symptoms the patient was experiencing",
+              },
+              diagnosis: {
+                type: "string",
+                description:
+                  "Final diagnosis based on the patient symptoms, and their answers to the diagnosis questions",
+              },
+              possibleCause: {
+                type: "string",
+                description: "Possible cause of the final diagnosis",
+              },
+              treatmentPlan: {
+                type: "string",
+                description:
+                  "The recommended treatment plan. This could include medications, therapy recommendations, lifestyle changes, etc.",
+              },
+              followUpRecommendation: {
+                type: "string",
+                description:
+                  "This section includes recommendations for follow-up appointments, further tests, or monitoring",
+              },
+            },
+            required: [],
+          },
+        },
+      ],
+      function_call: "auto",
+    });
+
+    let responseMessage = completion.choices[0].message;
+
+    console.log("RESPONSEE ===>", responseMessage);
+
+    if (
+      responseMessage.function_call.name === "generate_final_diagnosis_report"
+    ) {
+      const args = JSON.parse(responseMessage.function_call.arguments);
+
+      let finalReport = args;
+      const updateWithReport = await supabase
+        .from("sessions")
+        .update({
+          report: finalReport,
+        })
+        .eq("id", sessionId)
+        .select();
+      return res.status(200).send({
+        message: "Diagnosis report is ready",
+        finalReport: updateWithReport.data[0].report,
+      });
+    }
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    return res.status(500).send({ error: "Unexpected error" });
+  }
+});
+
 app.get("/", (req, res) => {
   res.send("Hello I am working with Supabase <3");
 });
