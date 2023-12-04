@@ -57,18 +57,41 @@ app.post("/verify-otp", async (req, res) => {
     console.error("Error verifying OTP:", error.message);
     res.status(500).send({ error: "Error verifying OTP" });
   } else {
-    // Insert the new user into the 'users' table
-    const { data, error: insertError } = await supabase
+    // Check if the phone number already exists in the 'users' table
+    const supabaseCheckIfUserExist = await supabase
       .from("users")
-      .insert([{ id: user.id, phone: phone }]);
+      .select("*")
+      .eq("phone", phone);
 
-    console.log("THE DATA  FROM SETTING USERS", data);
-    if (insertError) {
-      console.error("Error inserting user:", insertError.message);
-      res.status(500).send({ error: "Error inserting user" });
-    } else {
+    console.log("WHAT IS THIS DATA", supabaseCheckIfUserExist);
+
+    if (supabaseCheckIfUserExist.error) {
+      console.error(
+        "Error selecting user:",
+        supabaseCheckIfUserExist.error.message
+      );
+      return res.status(500).send({ error: "Error selecting user" });
+    } else if (supabaseCheckIfUserExist.data.length > 0) {
+      // If the phone number already exists, send success response
       console.log("OTP verified:", session);
-      res.status(200).send({ message: "Authentication successful", session });
+      return res
+        .status(200)
+        .send({ message: "Authentication successful", session });
+    } else {
+      // If the phone number doesn't exist, insert the new user into the 'users' table
+      const { data, error: insertError } = await supabase
+        .from("users")
+        .insert([{ id: user.id, phone: phone }]);
+      // console.log("THE DATA  FROM SETTING USERS", data);
+      if (insertError) {
+        console.error("Error inserting user:", insertError.message);
+        return res.status(500).send({ error: "Error inserting user" });
+      } else {
+        console.log("OTP verified:", session);
+        return res
+          .status(200)
+          .send({ message: "Authentication successful", session });
+      }
     }
   }
 });
